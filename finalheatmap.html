@@ -1,0 +1,938 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Obsidian热力图终极版</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        
+        body {
+            background-color: #1a1a1a;
+            min-height: 100vh;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            transition: background-color 0.3s ease;
+            padding: 20px;
+            overflow-x: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        body.light-mode {
+            background-color: #f0f0f0;
+        }
+        
+        /* 卡片容器 */
+        .card-container {
+            background: rgba(25, 25, 35, 0.8);
+            border-radius: 16px;
+            padding: 20px;
+            display: flex;
+            gap: 12px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            flex-wrap: nowrap;
+            justify-content: center;
+            align-items: center;
+            max-width: 100%;
+        }
+        
+        body.light-mode .card-container {
+            background: rgba(255, 255, 255, 0.9);
+            border: 1px solid rgba(0, 0, 0, 0.1);
+        }
+        
+        /* 热力图容器 */
+        .heatmap-container {
+            background: rgba(25, 25, 35, 0.3);
+            padding: 15px;
+            border-radius: 12px;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-width: 800px;
+        }
+        
+        body.light-mode .heatmap-container {
+            background: rgba(255, 255, 255, 0.7);
+        }
+        
+        /* 热力图核心样式 */
+        .heatmap-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 0;
+            margin-bottom: 5px;
+            padding: 0;
+            width: 100%;
+        }
+        
+        .months-row {
+            display: flex;
+            margin-left: 25px;
+            height: 20px;
+            position: relative;
+            margin-bottom: 3px;
+            width: calc(100% - 25px);
+        }
+        
+        .month-label {
+            font-size: 0.7rem;
+            color: #7a7a8c;
+            text-align: center;
+            position: absolute;
+            top: 0;
+            z-index: 5;
+            padding: 0 3px;
+            white-space: nowrap;
+            text-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
+            transform: translateX(-50%);
+        }
+        
+        body.light-mode .month-label {
+            color: #666;
+            text-shadow: 0 0 4px rgba(255, 255, 255, 0.5);
+        }
+        
+        .heatmap-grid {
+            display: flex;
+            gap: 3px;
+            width: 100%;
+        }
+        
+        .days-column {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+            margin-right: 5px;
+            width: 20px;
+        }
+        
+        .day-label {
+            font-size: 0.65rem;
+            color: #7a7a8c;
+            height: 12px;
+            text-align: center;
+            min-width: 12px;
+            text-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        body.light-mode .day-label {
+            color: #666;
+            text-shadow: 0 0 4px rgba(255, 255, 255, 0.5);
+        }
+        
+        .weeks-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+            flex: 1;
+        }
+        
+        .week-row {
+            display: flex;
+            gap: 3px;
+            width: 100%;
+        }
+        
+        /* 格子样式 */
+        .day-cell {
+            width: 12px;
+            height: 12px;
+            border-radius: 3px;
+            background-color: var(--level0, #2c2c3a);
+            cursor: pointer;
+            position: relative;
+            transition: all 0.2s ease-out;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+            flex-shrink: 0;
+        }
+        
+        body.light-mode .day-cell {
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+        }
+        
+        /* 每月第一天边框 */
+        .day-cell.first-day {
+            border: 1px solid #ffffff;
+        }
+        
+        body.light-mode .day-cell.first-day {
+            border: 1px solid #000000;
+        }
+        
+        /* 虚线格子样式 */
+        .day-cell.empty-cell {
+            background-color: transparent;
+            border: 1px dashed #4a4a5a;
+            cursor: default;
+        }
+        
+        body.light-mode .day-cell.empty-cell {
+            border: 1px dashed #b0b0b0;
+        }
+        
+        /* 模式切换格子特殊样式 */
+        .day-cell.mode-toggle-cell {
+            background-color: transparent;
+            border: 1px solid #7a7a8c;
+            cursor: pointer;
+        }
+        
+        body.light-mode .day-cell.mode-toggle-cell {
+            border: 1px solid #666;
+        }
+        
+        .day-cell.mode-toggle-cell:hover {
+            background-color: rgba(79, 195, 247, 0.2);
+            transform: scale(1.8);
+            z-index: 100;
+        }
+        
+        body.light-mode .day-cell.mode-toggle-cell:hover {
+            background-color: rgba(25, 118, 210, 0.2);
+        }
+        
+        .day-cell:hover {
+            transform: scale(1.8);
+            z-index: 100;
+            box-shadow: 
+                0 0 10px rgba(79, 195, 247, 0.8),
+                0 0 8px rgba(255, 255, 255, 0.7);
+            filter: brightness(1.3);
+        }
+        
+        .tooltip {
+            position: absolute;
+            top: -28px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.9);
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            white-space: nowrap;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.2s;
+            z-index: 100;
+            border: 1px solid rgba(79, 195, 247, 0.5);
+            box-shadow: 0 0 10px rgba(79, 195, 247, 0.5);
+        }
+        
+        body.light-mode .tooltip {
+            background: rgba(255, 255, 255, 0.95);
+            color: #333;
+            border: 1px solid rgba(0, 0, 0, 0.1);
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+        
+        .day-cell:hover .tooltip {
+            opacity: 1;
+        }
+        
+        /* 颜色控制面板 */
+        .color-controls {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            background: rgba(35, 35, 45, 0.4);
+            padding: 10px;
+            border-radius: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            transition: all 0.3s ease;
+            width: 40px;
+        }
+        
+        body.light-mode .color-controls {
+            background: rgba(240, 240, 240, 0.7);
+            border: 1px solid rgba(0, 0, 0, 0.08);
+        }
+        
+        .color-row {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .color-preview-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            justify-content: center;
+        }
+        
+        /* 颜色预览块 */
+        .color-preview {
+            width: 22px;
+            height: 22px;
+            border-radius: 4px;
+            border: 1px solid #4a4a5a;
+            position: relative;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+        
+        body.light-mode .color-preview {
+            border: 1px solid #b0b0b0;
+        }
+        
+        .color-preview:hover {
+            transform: scale(1.2);
+            box-shadow: 0 0 8px rgba(255, 255, 255, 0.4);
+        }
+        
+        .color-preview.selected {
+            border: 2px solid #fff;
+            box-shadow: 0 0 8px rgba(255, 255, 255, 0.8);
+        }
+        
+        body.light-mode .color-preview.selected {
+            border: 2px solid #333;
+        }
+        
+        .color-preview input[type="color"] {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0;
+            cursor: pointer;
+        }
+        
+        button {
+            background: #4a4a5a;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+        
+        body.light-mode button {
+            background: #d0d0d0;
+            color: #333;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        
+        button:hover {
+            background: #5a5a6a;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+        }
+        
+        body.light-mode button:hover {
+            background: #c0c0c0;
+        }
+        
+        button.reset {
+            background: #703a3a;
+        }
+        
+        body.light-mode button.reset {
+            background: #e0a0a0;
+        }
+        
+        button.reset:hover {
+            background: #804a4a;
+        }
+        
+        body.light-mode button.reset:hover {
+            background: #d09090;
+        }
+        
+        /* 右侧面板 */
+        .right-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        
+        .right-button-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        
+        .icon-button {
+            width: 22px;
+            height: 22px;
+            padding: 0;
+            font-size: 0.8rem;
+        }
+        
+        /* 预览模式样式 */
+        .preview-mode .color-controls,
+        .preview-mode .right-button-group {
+            display: none;
+        }
+        
+        .preview-mode .card-container {
+            width: auto;
+        }
+        
+        /* 背景色选择器按钮 */
+        .bg-color-button {
+            width: 22px;
+            height: 22px;
+            border-radius: 5px;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+            background: #4a4a5a;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.8rem;
+        }
+        
+        body.light-mode .bg-color-button {
+            background: #d0d0d0;
+            color: #333;
+        }
+        
+        .bg-color-button:hover {
+            background: #5a5a6a;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+        }
+        
+        body.light-mode .bg-color-button:hover {
+            background: #c0c0c0;
+        }
+        
+        .bg-color-button input[type="color"] {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0;
+            cursor: pointer;
+        }
+        
+        /* 状态提示 */
+        .status-message {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            opacity: 0;
+            transition: opacity 0.3s;
+            z-index: 1000;
+        }
+    </style>
+</head>
+<body class="edit-mode">
+    <!-- 状态提示 -->
+    <div class="status-message" id="status-message"></div>
+    
+    <!-- 卡片容器 -->
+    <div class="card-container">
+        <!-- 热力图 -->
+        <div class="heatmap-container">
+            <div class="heatmap-wrapper">
+                <div class="months-row" id="months-container"></div>
+                
+                <div class="heatmap-grid">
+                    <div class="days-column" id="days-container">
+                        <div class="day-label">一</div>
+                        <div class="day-label">二</div>
+                        <div class="day-label">三</div>
+                        <div class="day-label">四</div>
+                        <div class="day-label">五</div>
+                        <div class="day-label">六</div>
+                        <div class="day-label">日</div>
+                    </div>
+                    <div class="weeks-grid" id="weeks-container"></div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 颜色控制面板 -->
+        <div class="color-controls">
+            <div class="color-row">
+                <div class="color-preview-group">
+                    <div class="color-preview" id="color-preview-0" style="background-color: var(--level0);">
+                        <input type="color" id="color0" value="#2c2c3a">
+                    </div>
+                    <div class="color-preview" id="color-preview-1" style="background-color: var(--level1);">
+                        <input type="color" id="color1" value="#3a6b7a">
+                    </div>
+                    <div class="color-preview" id="color-preview-2" style="background-color: var(--level2);">
+                        <input type="color" id="color2" value="#2d8a6d">
+                    </div>
+                    <div class="color-preview" id="color-preview-3" style="background-color: var(--level3);">
+                        <input type="color" id="color3" value="#4a9c5f">
+                    </div>
+                    <div class="color-preview" id="color-preview-4" style="background-color: var(--level4);">
+                        <input type="color" id="color4" value="#5cb85c">
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 右侧面板（包含按钮组） -->
+        <div class="right-panel">
+            <!-- 右侧按钮组 -->
+            <div class="right-button-group">
+                <button id="theme-toggle" class="icon-button" title="切换主题">🌛</button>
+                <div class="bg-color-button" title="更改背景颜色">
+                    🎨
+                    <input type="color" id="bg-color-picker">
+                </div>
+                <button id="reset-colors" class="reset icon-button" title="重置颜色">🔄</button>
+                <button id="save-data" class="icon-button" title="保存数据">💾</button>
+                <button id="clear-data" class="reset icon-button" title="清除数据">❌</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // 初始化变量
+            const currentYear = new Date().getFullYear();
+            let selectedLevel = 0;
+            let heatmapData = {};
+            let dateMap = {};
+            
+            // DOM元素
+            const monthsContainer = document.getElementById('months-container');
+            const weeksContainer = document.getElementById('weeks-container');
+            const resetColorsBtn = document.getElementById('reset-colors');
+            const saveDataBtn = document.getElementById('save-data');
+            const clearDataBtn = document.getElementById('clear-data');
+            const themeToggle = document.getElementById('theme-toggle');
+            const colorInputs = document.querySelectorAll('input[type="color"]');
+            const colorPreviews = document.querySelectorAll('.color-preview');
+            const bgColorPicker = document.getElementById('bg-color-picker');
+            const body = document.body;
+            const statusMessage = document.getElementById('status-message');
+            
+            // 显示状态消息
+            function showStatusMessage(message) {
+                statusMessage.textContent = message;
+                statusMessage.style.opacity = 1;
+                setTimeout(() => {
+                    statusMessage.style.opacity = 0;
+                }, 2000);
+            }
+            
+            // 初始化热力图
+            function initHeatmap() {
+                monthsContainer.innerHTML = '';
+                weeksContainer.innerHTML = '';
+                dateMap = {};
+                
+                // 创建日期数组
+                const daysInYear = isLeapYear(currentYear) ? 366 : 365;
+                const allDates = [];
+                const startDate = new Date(currentYear, 0, 1);
+                
+                for (let i = 0; i < daysInYear; i++) {
+                    const date = new Date(startDate);
+                    date.setDate(startDate.getDate() + i);
+                    allDates.push(date);
+                }
+                
+                // 将日期分组到周中
+                const weeks = [];
+                let currentWeek = [];
+                
+                // 计算第一天的偏移
+                const firstDayOfYear = startDate.getDay();
+                const offset = firstDayOfYear === 0 ? 6 : firstDayOfYear - 1;
+                
+                // 添加初始空白
+                for (let i = 0; i < offset; i++) {
+                    currentWeek.push(null);
+                }
+                
+                // 填充日期
+                allDates.forEach(date => {
+                    currentWeek.push(date);
+                    
+                    if (currentWeek.length === 7) {
+                        weeks.push([...currentWeek]);
+                        currentWeek = [];
+                    }
+                });
+                
+                // 添加最后一周的空白
+                if (currentWeek.length > 0) {
+                    while (currentWeek.length < 7) {
+                        currentWeek.push(null);
+                    }
+                    weeks.push([...currentWeek]);
+                }
+                
+                // 创建热力图格子
+                for (let row = 0; row < 7; row++) {
+                    const weekRow = document.createElement('div');
+                    weekRow.className = 'week-row';
+                    
+                    for (let col = 0; col < weeks.length; col++) {
+                        const cell = document.createElement('div');
+                        const date = weeks[col][row];
+                        
+                        if (date) {
+                            cell.className = 'day-cell';
+                            // 存储日期
+                            const dateKey = date.toISOString().split('T')[0];
+                            dateMap[`${row}-${col}`] = date;
+                            
+                            // 设置初始数据值
+                            if (!heatmapData[dateKey]) {
+                                // 使用0作为默认值，而不是随机值
+                                heatmapData[dateKey] = 0;
+                            }
+                            
+                            updateCellColor(cell, heatmapData[dateKey]);
+                            
+                            // 添加提示
+                            const tooltip = document.createElement('div');
+                            tooltip.className = 'tooltip';
+                            tooltip.textContent = formatDate(date);
+                            cell.appendChild(tooltip);
+                            
+                            // 如果是每月第一天，添加特殊样式
+                            if (date.getDate() === 1) {
+                                cell.classList.add('first-day');
+                            }
+                            
+                            // 点击事件
+                            cell.addEventListener('click', () => {
+                                const dateKey = date.toISOString().split('T')[0];
+                                heatmapData[dateKey] = selectedLevel;
+                                updateCellColor(cell, selectedLevel);
+                                saveData();
+                                showStatusMessage('数据已更新');
+                            });
+                        } else {
+                            // 空白格子
+                            cell.className = 'day-cell empty-cell';
+                            
+                            // 检查是否是最后一周的周日（模式切换格子）
+                            const isLastCell = col === weeks.length - 1 && row === 6;
+                            
+                            if (isLastCell) {
+                                cell.classList.add('mode-toggle-cell');
+                                cell.innerHTML = '<div class="tooltip">切换模式</div>';
+                                
+                                // 添加模式切换事件
+                                cell.addEventListener('click', toggleMode);
+                            }
+                        }
+                        
+                        cell.dataset.row = row;
+                        cell.dataset.col = col;
+                        weekRow.appendChild(cell);
+                    }
+                    
+                    weeksContainer.appendChild(weekRow);
+                }
+                
+                // 添加月份标签 - 与当月第一天所在列中心对齐
+                addMonthLabels(weeks);
+            }
+            
+            // 添加月份标签
+            function addMonthLabels(weeks) {
+                const monthPositions = {};
+                const cellWidth = 12;
+                const cellGap = 3;
+                const cellTotal = cellWidth + cellGap;
+                
+                // 找出每个月的第一天位置
+                for (let col = 0; col < weeks.length; col++) {
+                    for (let row = 0; row < 7; row++) {
+                        const date = weeks[col][row];
+                        if (date && date.getDate() === 1) {
+                            const month = date.getMonth();
+                            
+                            // 确保每个月份只添加一次标签
+                            if (!monthPositions[month]) {
+                                // 计算格子中心位置
+                                const leftPosition = 25 + col * cellTotal + cellWidth/2;
+                                
+                                const monthLabel = document.createElement('div');
+                                monthLabel.className = 'month-label';
+                                monthLabel.textContent = (month + 1) + '月';
+                                monthLabel.style.left = `${leftPosition}px`;
+                                monthsContainer.appendChild(monthLabel);
+                                
+                                monthPositions[month] = true;
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // 格式化日期
+            function formatDate(date) {
+                const month = date.getMonth() + 1;
+                const day = date.getDate();
+                return `${month}月${day}日`;
+            }
+            
+            // 检查闰年
+            function isLeapYear(year) {
+                return (year % 4 === 0 && year % 100 !== 0) || (year % 400 === 0);
+            }
+            
+            // 更新格子颜色
+            function updateCellColor(cell, level) {
+                cell.style.backgroundColor = `var(--level${level})`;
+            }
+            
+            // 应用颜色设置
+            function applyColorSettings() {
+                // 更新所有格子的颜色
+                document.querySelectorAll('.day-cell').forEach(cell => {
+                    const row = cell.dataset.row;
+                    const col = cell.dataset.col;
+                    const date = dateMap[`${row}-${col}`];
+                    
+                    if (date) {
+                        const dateKey = date.toISOString().split('T')[0];
+                        updateCellColor(cell, heatmapData[dateKey]);
+                    }
+                });
+            }
+            
+            // 重置颜色
+            function resetColors() {
+                document.getElementById('color0').value = '#2c2c3a';
+                document.getElementById('color1').value = '#3a6b7a';
+                document.getElementById('color2').value = '#2d8a6d';
+                document.getElementById('color3').value = '#4a9c5f';
+                document.getElementById('color4').value = '#5cb85c';
+                
+                // 更新预览方块颜色
+                document.getElementById('color-preview-0').style.backgroundColor = '#2c2c3a';
+                document.getElementById('color-preview-1').style.backgroundColor = '#3a6b7a';
+                document.getElementById('color-preview-2').style.backgroundColor = '#2d8a6d';
+                document.getElementById('color-preview-3').style.backgroundColor = '#4a9c5f';
+                document.getElementById('color-preview-4').style.backgroundColor = '#5cb85c';
+                
+                // 应用新颜色
+                document.documentElement.style.setProperty('--level0', '#2c2c3a');
+                document.documentElement.style.setProperty('--level1', '#3a6b7a');
+                document.documentElement.style.setProperty('--level2', '#2d8a6d');
+                document.documentElement.style.setProperty('--level3', '#4a9c5f');
+                document.documentElement.style.setProperty('--level4', '#5cb85c');
+                
+                applyColorSettings();
+                saveData();
+                showStatusMessage('颜色已重置');
+            }
+            
+            // 保存数据到本地存储
+            function saveData() {
+                try {
+                    const dataToSave = {
+                        heatmapData: heatmapData,
+                        colors: {
+                            level0: document.getElementById('color0').value,
+                            level1: document.getElementById('color1').value,
+                            level2: document.getElementById('color2').value,
+                            level3: document.getElementById('color3').value,
+                            level4: document.getElementById('color4').value
+                        },
+                        theme: body.classList.contains('light-mode') ? 'light' : 'dark',
+                        bgColor: body.style.backgroundColor || ''
+                    };
+                    localStorage.setItem('heatmapData', JSON.stringify(dataToSave));
+                    return true;
+                } catch (e) {
+                    console.error('保存数据失败:', e);
+                    showStatusMessage('保存失败: ' + e.message);
+                    return false;
+                }
+            }
+            
+            // 清除数据
+            function clearData() {
+                if (confirm('确定要清除所有数据吗？')) {
+                    heatmapData = {};
+                    document.querySelectorAll('.day-cell').forEach(cell => {
+                        const row = cell.dataset.row;
+                        const col = cell.dataset.col;
+                        const date = dateMap[`${row}-${col}`];
+                        
+                        if (date) {
+                            const dateKey = date.toISOString().split('T')[0];
+                            heatmapData[dateKey] = 0;
+                            updateCellColor(cell, 0);
+                        }
+                    });
+                    saveData();
+                    showStatusMessage('数据已清除');
+                }
+            }
+            
+            // 切换模式
+            function toggleMode() {
+                if (body.classList.contains('edit-mode')) {
+                    body.classList.remove('edit-mode');
+                    body.classList.add('preview-mode');
+                    showStatusMessage('预览模式');
+                } else {
+                    body.classList.remove('preview-mode');
+                    body.classList.add('edit-mode');
+                    showStatusMessage('编辑模式');
+                }
+            }
+            
+            // 切换主题
+            function toggleTheme() {
+                body.classList.toggle('light-mode');
+                themeToggle.textContent = body.classList.contains('light-mode') ? '🌞' : '🌛';
+                saveData();
+                showStatusMessage('主题已切换');
+            }
+            
+            // 更改背景颜色
+            function changeBgColor(color) {
+                body.style.backgroundColor = color;
+                saveData();
+                showStatusMessage('背景颜色已更新');
+            }
+            
+            // 事件监听器
+            resetColorsBtn.addEventListener('click', resetColors);
+            saveDataBtn.addEventListener('click', () => {
+                if (saveData()) {
+                    showStatusMessage('数据已保存');
+                }
+            });
+            clearDataBtn.addEventListener('click', clearData);
+            themeToggle.addEventListener('click', toggleTheme);
+            
+            // 背景颜色选择器
+            bgColorPicker.addEventListener('input', (e) => {
+                changeBgColor(e.target.value);
+            });
+            
+            // 颜色选择器事件
+            colorInputs.forEach(input => {
+                input.addEventListener('input', (e) => {
+                    const level = e.target.id.replace('color', '');
+                    const color = e.target.value;
+                    
+                    // 更新预览方块
+                    const preview = document.getElementById(`color-preview-${level}`);
+                    preview.style.backgroundColor = color;
+                    
+                    // 更新CSS变量
+                    document.documentElement.style.setProperty(`--level${level}`, color);
+                    
+                    // 应用新颜色
+                    applyColorSettings();
+                    saveData();
+                });
+            });
+            
+            // 颜色预览点击事件 - 设置当前等级
+            colorPreviews.forEach(preview => {
+                preview.addEventListener('click', (e) => {
+                    // 移除之前选中的样式
+                    colorPreviews.forEach(p => p.classList.remove('selected'));
+                    
+                    // 添加选中样式
+                    preview.classList.add('selected');
+                    
+                    // 设置当前等级
+                    selectedLevel = parseInt(preview.id.replace('color-preview-', ''));
+                    showStatusMessage(`已选择等级 ${selectedLevel}`);
+                });
+            });
+            
+            // 尝试加载保存的数据
+            const savedData = localStorage.getItem('heatmapData');
+            if (savedData) {
+                try {
+                    const parsedData = JSON.parse(savedData);
+                    heatmapData = parsedData.heatmapData || {};
+                    
+                    // 更新颜色
+                    document.getElementById('color0').value = parsedData.colors.level0 || '#2c2c3a';
+                    document.getElementById('color1').value = parsedData.colors.level1 || '#3a6b7a';
+                    document.getElementById('color2').value = parsedData.colors.level2 || '#2d8a6d';
+                    document.getElementById('color3').value = parsedData.colors.level3 || '#4a9c5f';
+                    document.getElementById('color4').value = parsedData.colors.level4 || '#5cb85c';
+                    
+                    // 更新预览方块颜色
+                    document.getElementById('color-preview-0').style.backgroundColor = 
+                        parsedData.colors.level0 || '#2c2c3a';
+                    document.getElementById('color-preview-1').style.backgroundColor = 
+                        parsedData.colors.level1 || '#3a6b7a';
+                    document.getElementById('color-preview-2').style.backgroundColor = 
+                        parsedData.colors.level2 || '#2d8a6d';
+                    document.getElementById('color-preview-3').style.backgroundColor = 
+                        parsedData.colors.level3 || '#4a9c5f';
+                    document.getElementById('color-preview-4').style.backgroundColor = 
+                        parsedData.colors.level4 || '#5cb85c';
+                    
+                    // 应用颜色
+                    document.documentElement.style.setProperty('--level0', parsedData.colors.level0 || '#2c2c3a');
+                    document.documentElement.style.setProperty('--level1', parsedData.colors.level1 || '#3a6b7a');
+                    document.documentElement.style.setProperty('--level2', parsedData.colors.level2 || '#2d8a6d');
+                    document.documentElement.style.setProperty('--level3', parsedData.colors.level3 || '#4a9c5f');
+                    document.documentElement.style.setProperty('--level4', parsedData.colors.level4 || '#5cb85c');
+                    
+                    // 应用主题
+                    if (parsedData.theme === 'light') {
+                        body.classList.add('light-mode');
+                        themeToggle.textContent = '🌞';
+                    } else {
+                        body.classList.remove('light-mode');
+                        themeToggle.textContent = '🌛';
+                    }
+                    
+                    // 应用背景颜色
+                    if (parsedData.bgColor) {
+                        body.style.backgroundColor = parsedData.bgColor;
+                        bgColorPicker.value = parsedData.bgColor;
+                    }
+                } catch (e) {
+                    console.error('加载数据失败:', e);
+                    showStatusMessage('加载数据失败');
+                }
+            }
+            
+            // 初始化热力图
+            initHeatmap();
+            
+            // 默认选择第一个颜色预览
+            document.getElementById('color-preview-0').classList.add('selected');
+            showStatusMessage('数据已加载');
+        });
+    </script>
+</body>
+</html>
