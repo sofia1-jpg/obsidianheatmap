@@ -1,0 +1,1702 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>多活动热力图追踪器 - 优化版</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        
+        body {
+            background-color: #1a1a1a;
+            min-height: 100vh;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            transition: background-color 0.3s ease;
+            padding: 25px;
+            overflow-x: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            overflow-y: auto;
+        }
+        
+        body.light-mode {
+            background-color: #f0f0f0;
+        }
+        
+        /* 卡片容器 - 放大 */
+        .card-container {
+            background: rgba(25, 25, 35, 0.8);
+            border-radius: 20px;
+            padding: 20px 15px 0px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            box-shadow: 0 12px 35px rgba(0, 0, 0, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            max-width: 100%;
+            position: relative;
+            margin-top: 15px;
+            width: auto;
+            overflow-x: auto;
+        }
+        
+        body.light-mode .card-container {
+            background: rgba(255, 255, 255, 0.95);
+            border: 1px solid rgba(0, 0, 0, 0.15);
+        }
+        
+        /* 热力图容器 - 放大 */
+        .heatmap-container {
+            background: rgba(25, 25, 35, 0.3);
+            padding: 15px 12px 8px;
+            border-radius: 16px;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+            overflow: visible;
+        }
+        
+        body.light-mode .heatmap-container {
+            background: rgba(255, 255, 255, 0.75);
+        }
+        
+        /* 热力图核心样式 - 放大 */
+        .heatmap-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 0;
+            margin-bottom: 8px;
+            padding: 0;
+            width: 100%;
+        }
+        
+        .months-row {
+            display: flex;
+            margin-left: 35px;
+            height: 28px;
+            position: relative;
+            margin-bottom: 5px;
+            width: calc(100% - 35px);
+        }
+        
+        .month-label {
+            font-size: 0.85rem;
+            color: #7a7a8c;
+            text-align: center;
+            position: absolute;
+            top: 0;
+            z-index: 5;
+            padding: 0 5px;
+            white-space: nowrap;
+            text-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
+            transform: translateX(-50%);
+        }
+        
+        body.light-mode .month-label {
+            color: #666;
+            text-shadow: 0 0 4px rgba(255, 255, 255, 0.5);
+        }
+        
+        .heatmap-grid {
+            display: flex;
+            gap: 3px;
+            width: 100%;
+        }
+        
+        .days-column {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+            margin-right: 8px;
+            width: 26px;
+        }
+        
+        .day-label {
+            font-size: 0.8rem;
+            color: #7a7a8c;
+            height: 15px;
+            text-align: center;
+            min-width: 15px;
+            text-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        body.light-mode .day-label {
+            color: #666;
+            text-shadow: 0 0 4px rgba(255, 255, 255, 0.5);
+        }
+        
+        .weeks-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+            flex: 1;
+            min-width: 0;
+        }
+        
+        .week-row {
+            display: flex;
+            gap: 3px;
+            width: 100%;
+        }
+        
+        /* 格子容器 - 放大 */
+        .day-cell-container {
+            width: 15px;
+            height: 15px;
+            position: relative;
+            overflow: visible;
+            z-index: 1;
+            border-radius: 3px;
+            transition: transform 0.2s ease;
+        }
+        
+        /* 格子样式 - 放大 */
+        .day-cell {
+            position: absolute;
+            left: 0;
+            width: 100%;
+            background-color: var(--level0, #2c2c3a);
+            transition: all 0.2s ease-out;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+        }
+        
+        body.light-mode .day-cell {
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+        }
+        
+        /* 每月第一天边框 */
+        .day-cell-container.first-day {
+            border: 1px solid rgba(255, 255, 255, 0.45);
+            border-radius: 3px;
+        }
+        
+        body.light-mode .day-cell-container.first-day {
+            border: 1px solid rgba(0, 0, 0, 0.45);
+        }
+        
+        /* 虚线格子样式 */
+        .day-cell-container.empty-cell {
+            background-color: transparent;
+            border: 1px dashed #4a4a5a;
+            cursor: default;
+        }
+        
+        body.light-mode .day-cell-container.empty-cell {
+            border: 1px dashed #b0b0b0;
+        }
+        
+        /* 模式切换格子特殊样式 */
+        .day-cell-container.mode-toggle-cell {
+            background-color: transparent;
+            border: 1px solid #7a7a8c;
+            cursor: pointer;
+            border-radius: 3px;
+        }
+        
+        body.light-mode .day-cell-container.mode-toggle-cell {
+            border: 1px solid #666;
+        }
+        
+        .day-cell-container.mode-toggle-cell:hover {
+            background-color: rgba(79, 195, 247, 0.25);
+            transform: scale(1.8);
+            z-index: 100;
+            border-radius: 3px;
+        }
+        
+        body.light-mode .day-cell-container.mode-toggle-cell:hover {
+            background-color: rgba(25, 118, 210, 0.25);
+        }
+        
+        .day-cell-container:hover {
+            transform: scale(1.8);
+            z-index: 100;
+            box-shadow: 
+                0 0 10px rgba(79, 195, 247, 0.85),
+                0 0 8px rgba(255, 255, 255, 0.8);
+            border-radius: 3px;
+        }
+        
+        /* 优化工具提示 - 放大 */
+        .tooltip {
+            position: absolute;
+            top: -30px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.9);
+            color: white;
+            padding: 5px 8px;
+            border-radius: 5px;
+            font-size: 0.8rem;
+            white-space: nowrap;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.2s;
+            z-index: 10000;
+            border: 1px solid rgba(79, 195, 247, 0.55);
+            box-shadow: 0 0 10px rgba(79, 195, 247, 0.55);
+            max-width: 180px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        body.light-mode .tooltip {
+            background: rgba(255, 255, 255, 0.95);
+            color: #333;
+            border: 1px solid rgba(0, 0, 0, 0.15);
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.15);
+        }
+        
+        .day-cell-container:hover .tooltip {
+            opacity: 1;
+        }
+        
+        /* 颜色控制面板 - 放大 */
+        .color-controls {
+            display: flex;
+            flex-direction: row;
+            gap: 0px; 
+            background: rgba(35, 35, 45, 0.45);
+            padding: 5px;
+            border-radius: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            transition: all 0.3s ease;
+            max-height: 350px;
+            overflow-x: auto;
+            overflow-y: hidden;
+            flex-wrap: nowrap;
+            max-width: 100%;
+        }
+        
+        body.light-mode .color-controls {
+            background: rgba(240, 240, 240, 0.75);
+            border: 1px solid rgba(0, 0, 0, 0.12);
+        }
+        
+        .activity-header {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 5px;
+            padding-bottom: 0;
+            position: relative;
+            min-width: 15px;
+        }
+        
+        .activity-title {
+            font-size: 0.8rem;
+            color: #7a7a8c;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            max-width: 100%;
+            cursor: default;
+            padding: 3px;
+            border-radius: 4px;
+            transition: all 0.2s ease;
+            position: relative;
+            text-align: center;
+            font-weight: 500;
+        }
+        
+        .activity-actions {
+            display: none !important;
+        }
+        
+        .color-preview-group {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            justify-content: flex-start;
+            margin-bottom: 0;
+            min-width: 30px;
+            position: relative;
+        }
+        
+        .color-preview {
+            width: 22px;
+            height: 22px;
+            border-radius: 4px;
+            position: relative;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.25);
+            border: none !important;
+        }
+        
+        .color-preview:hover {
+            transform: scale(1.15);
+            box-shadow: 0 0 8px rgba(255, 255, 255, 0.45);
+        }
+        
+        .color-preview.selected {
+            border: 2px solid #fff !important;
+            box-shadow: 0 0 8px rgba(255, 255, 255, 0.85);
+        }
+        
+        body.light-mode .color-preview.selected {
+            border: 2px solid #333 !important;
+        }
+        
+        .color-preview input[type="color"] {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0;
+            cursor: pointer;
+        }
+        
+        button {
+            background: #4a4a5a;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.25);
+            padding: 8px 12px;
+            font-size: 0.9rem;
+        }
+        
+        body.light-mode button {
+            background: #d0d0d0;
+            color: #333;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+        }
+        
+        button:hover {
+            background: #5a5a6a;
+            transform: translateY(-2px);
+            box-shadow: 0 3px 6px rgba(0, 0, 0, 0.35);
+        }
+        
+        body.light-mode button:hover {
+            background: #c0c0c0;
+        }
+        
+        button.reset {
+            background: #703a3a;
+        }
+        
+        body.light-mode button.reset {
+            background: #e0a0a0;
+        }
+        
+        button.reset:hover {
+            background: #804a4a;
+        }
+        
+        body.light-mode button.reset:hover {
+            background: #d09090;
+        }
+        
+        /* 右侧面板 - 放大 */
+        .right-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            background: rgba(35, 35, 45, 0.45);
+            padding: 8px;
+            border-radius: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            transition: all 0.3s ease;
+            width: 50px;
+        }
+        
+        body.light-mode .right-panel {
+            background: rgba(240, 240, 240, 0.75);
+            border: 1px solid rgba(0, 0, 0, 0.12);
+        }
+        
+        .right-button-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        
+        .icon-button {
+            width: 28px;
+            height: 28px;
+            padding: 0;
+            font-size: 1rem;
+        }
+        
+        .preview-mode .color-controls,
+        .preview-mode .right-panel {
+            display: none;
+        }
+        
+        .preview-mode .card-container {
+            width: auto;
+            min-width: auto;
+            max-width: 100%;
+        }
+        
+        .bg-color-button {
+            width: 28px;
+            height: 28px;
+            border-radius: 6px;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.25);
+            background: #4a4a5a;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1rem;
+        }
+        
+        body.light-mode .bg-color-button {
+            background: #d0d0d0;
+            color: #333;
+        }
+        
+        .bg-color-button:hover {
+            background: #5a5a6a;
+            transform: translateY(-2px);
+            box-shadow: 0 3px 6px rgba(0, 0, 0, 0.35);
+        }
+        
+        body.light-mode .bg-color-button:hover {
+            background: #c0c0c0;
+        }
+        
+        .bg-color-button input[type="color"] {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0;
+            cursor: pointer;
+        }
+        
+        .status-message {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            background: rgba(0,0,0,0.75);
+            color: white;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            opacity: 0;
+            transition: opacity 0.3s;
+            z-index: 1000;
+        }
+        
+        .year-selector-container {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-top: 15px;
+            padding: 4px 8px;
+            background: rgba(40, 40, 50, 0.35);
+            border-radius: 8px;
+            align-self: flex-start;
+            font-size: 0.8rem;
+            position: relative;
+            z-index: 10;
+            margin-bottom: 0;
+            height: 32px;
+        }
+        
+        body.light-mode .year-selector-container {
+            background: rgba(220, 220, 230, 0.35);
+        }
+        
+        .year-selector {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .year-label {
+            color: #7a7a8c;
+            cursor: pointer;
+            transition: color 0.2s;
+            padding: 3px 6px;
+            border-radius: 6px;
+            font-size: inherit;
+        }
+        
+        body.light-mode .year-label {
+            color: #666;
+        }
+        
+        .year-label:hover {
+            background: rgba(60, 60, 70, 0.35);
+        }
+        
+        body.light-mode .year-label:hover {
+            background: rgba(200, 200, 210, 0.35);
+        }
+
+        .heatmap-content {
+            display: flex;
+            flex-direction: row;
+            gap: 12px;
+            width: 100%;
+            align-items: flex-start;
+            position: relative;
+        }
+        
+        .heatmap-container {
+            flex: 1;
+            min-width: 0;
+            overflow: visible;
+            padding-bottom: 8px;
+        }
+        
+        .controls-group {
+            display: flex;
+            flex-direction: row;
+            gap: 12px;
+            align-items: flex-start;
+        }
+        
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.75);
+            z-index: 2000;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .modal-content {
+            background: rgba(25, 25, 35, 0.95);
+            border-radius: 16px;
+            padding: 25px;
+            width: 350px;
+            max-width: 90%;
+            box-shadow: 0 12px 35px rgba(0,0,0,0.6);
+            border: 1px solid rgba(255,255,255,0.15);
+        }
+        
+        body.light-mode .modal-content {
+            background: rgba(255, 255, 255, 0.95);
+            border: 1px solid rgba(0,0,0,0.15);
+        }
+        
+        .modal-title {
+            margin-bottom: 20px;
+            color: #7a7a8c;
+            font-size: 1.3rem;
+            text-align: center;
+        }
+        
+        body.light-mode .modal-title {
+            color: #666;
+        }
+        
+        .modal-input {
+            width: 100%;
+            padding: 12px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            border: 1px solid #4a4a5a;
+            background: rgba(35,35,45,0.55);
+            color: white;
+            font-size: 1.1rem;
+        }
+        
+        body.light-mode .modal-input {
+            background: rgba(240,240,240,0.75);
+            border: 1px solid #d0d0d0;
+            color: #333;
+        }
+        
+        .modal-buttons {
+            display: flex;
+            justify-content: flex-end;
+            gap: 15px;
+        }
+        
+        .modal-button {
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            border: none;
+            font-weight: 500;
+            font-size: 1rem;
+        }
+        
+        .modal-confirm {
+            background: #4a9c5f;
+            color: white;
+        }
+        
+        .modal-cancel {
+            background: #703a3a;
+            color: white;
+        }
+        
+        /* 图例样式 - 放大 */
+        .legend-container {
+            display: flex;
+            flex-direction: row;
+            gap: 8px;
+            align-items: center;
+            background: rgba(25, 25, 35, 0.85);
+            border-radius: 10px;
+            padding: 5px 14px;
+            max-height: none;
+            overflow-x: auto;
+            overflow-y: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            box-shadow: 0 6px 14px rgba(0,0,0,0.35);
+            z-index: 10;
+            margin-top: 15px;
+            margin-bottom: 0px;
+            margin-left: 12px;
+            flex-wrap: wrap;
+            max-width: calc(100% - 120px);
+            height: 32px;
+            align-items: center;
+        }
+        
+        body.light-mode .legend-container {
+            background: rgba(255, 255, 255, 0.95);
+            border: 1px solid rgba(0, 0, 0, 0.15);
+        }
+        
+        .preview-mode .legend-container {
+            display: flex;
+        }
+        
+        .legend-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+            margin: 0;
+            position: relative;
+            min-width: auto;
+            height: auto;
+        }
+        
+        .legend-title {
+            display: none;
+        }
+        
+        body.light-mode .legend-title {
+            color: #666;
+        }
+        
+        .legend-color {
+            width: 22px;
+            height: 22px;
+            border-radius: 6px;
+            position: relative;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0;
+            font-weight: normal;
+            color: rgba(255, 255, 255, 0.9);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.25);
+        }
+        
+        body.light-mode .legend-color {
+            color: rgba(0, 0, 0, 0.8);
+        }
+        
+        .heatmap-footer {
+            display: flex;
+            justify-content: flex-start;
+            align-items: center;
+            width: 100%;
+            padding-top: 0;
+            margin-top: 0;
+            position: relative;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        
+        /* 管理事项模态框样式 */
+        .activities-list {
+            max-height: 350px;
+            overflow-y: auto;
+            margin-bottom: 20px;
+        }
+        
+        .activity-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            margin-bottom: 10px;
+            background: rgba(35,35,45,0.55);
+            border-radius: 8px;
+        }
+        
+        body.light-mode .activity-item {
+            background: rgba(240,240,240,0.75);
+        }
+        
+        .activity-name {
+            font-size: 1rem;
+            color: #ddd;
+        }
+        
+        body.light-mode .activity-name {
+            color: #333;
+        }
+        
+        .activity-buttons {
+            display: flex;
+            gap: 8px;
+        }
+        
+        .activity-rename-btn, .activity-delete-btn {
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            cursor: pointer;
+        }
+        
+        .activity-rename-btn {
+            background: #4a6c9c;
+            color: white;
+        }
+        
+        .activity-delete-btn {
+            background: #703a3a;
+            color: white;
+        }
+        
+        /* 编辑模式下的间距优化 */
+        .edit-mode .heatmap-content {
+            gap: 12px;
+        }
+        
+        .edit-mode .controls-group {
+            gap: 12px;
+            align-items: center;
+        }
+        
+        /* 热力图容器在编辑模式下添加滚动条 */
+        .edit-mode .heatmap-container {
+            overflow-x: auto;
+        }
+        
+        /* 编辑模式隐藏图例 */
+        .edit-mode .legend-container {
+            display: none;
+        }
+        
+        @media (max-width: 768px) {
+            .card-container {
+                min-width: auto;
+            }
+            
+            .heatmap-content {
+                flex-direction: column;
+                align-items: center;
+                gap: 12px;
+            }
+            
+            .color-controls {
+                flex-direction: row;
+                width: auto;
+                margin-top: 15px;
+                max-height: 250px;
+                overflow-x: auto;
+                gap: 10px;
+            }
+            
+            .color-preview-group {
+                flex-direction: row;
+            }
+            
+            .right-panel {
+                flex-direction: row;
+                margin-top: 15px;
+                width: auto;
+            }
+            
+            .controls-group {
+                flex-direction: column;
+                gap: 12px;
+                width: 100%;
+                justify-content: center;
+            }
+            
+            .legend-container {
+                position: relative;
+                right: auto;
+                bottom: auto;
+                width: 100%;
+                margin-top: 15px;
+                margin-left: 0;
+                justify-content: center;
+                max-width: 100%;
+            }
+            
+            .heatmap-footer {
+                flex-direction: column;
+                gap: 15px;
+                align-items: flex-start;
+            }
+        }
+    </style>
+</head>
+<body class="preview-mode">
+    <div class="status-message" id="status-message"></div>
+    
+    <div id="year-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-title">选择年份</div>
+            <input type="number" id="year-input" class="modal-input" min="1970" max="2100" placeholder="输入年份 (1970-2100)">
+            <div class="modal-buttons">
+                <button class="modal-button modal-cancel" id="year-cancel">取消</button>
+                <button class="modal-button modal-confirm" id="year-confirm">确定</button>
+            </div>
+        </div>
+    </div>
+    
+    <div id="add-activity-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-title">新增活动类型</div>
+            <input type="text" id="activity-input" class="modal-input" placeholder="输入活动名称">
+            <div class="modal-buttons">
+                <button class="modal-button modal-cancel" id="activity-cancel">取消</button>
+                <button class="modal-button modal-confirm" id="activity-confirm">确定</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 管理事项模态框 -->
+    <div id="manage-activities-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-title">管理活动事项</div>
+            <div class="activities-list" id="activities-list"></div>
+            <div class="modal-buttons">
+                <button class="modal-button modal-confirm" id="add-new-activity">新增事项</button>
+                <button class="modal-button modal-cancel" id="close-activities-modal">关闭</button>
+            </div>
+        </div>
+    </div>
+    
+    <div class="card-container">
+        <div class="heatmap-content">
+            <div class="heatmap-container">
+                <div class="heatmap-wrapper">
+                    <div class="months-row" id="months-container"></div>
+                    
+                    <div class="heatmap-grid">
+                        <div class="days-column" id="days-container">
+                            <div class="day-label">一</div>
+                            <div class="day-label">二</div>
+                            <div class="day-label">三</div>
+                            <div class="day-label">四</div>
+                            <div class="day-label">五</div>
+                            <div class="day-label">六</div>
+                            <div class="day-label">日</div>
+                        </div>
+                        <div class="weeks-grid" id="weeks-container"></div>
+                    </div>
+                    
+                    <div class="heatmap-footer">
+                        <div class="year-selector-container">
+                            <div class="year-selector">
+                                <span class="year-label" id="current-year">2025年</span>
+                            </div>
+                        </div>
+                        
+                        <div class="legend-container" id="legend-container"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="controls-group">
+                <div class="right-panel">
+                    <div class="right-button-group">
+                        <button id="theme-toggle" class="icon-button" title="切换主题">🌛</button>
+                        <div class="bg-color-button" title="更改背景颜色">
+                            🎨
+                            <input type="color" id="bg-color-picker">
+                        </div>
+                        <button id="clear-cell" class="icon-button" title="清除格子数据">🧹</button>
+                        <button id="manage-activities" class="icon-button" title="管理事项">📋</button>
+                        <button id="clear-data" class="reset icon-button" title="清除数据">❌</button>
+                    </div>
+                </div>
+                
+                <div class="color-controls" id="activities-colors-container"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            let selectedYear = new Date().getFullYear();
+            let selectedActivity = "默认";
+            let selectedLevel = 0;
+            let heatmapDatabase = {};
+            let dateMap = {};
+            let activities = ["默认"];
+            let clearMode = false;
+            
+            const defaultColors = {
+                "默认": {
+                    level1: '#8cb3d9',
+                    level2: '#5a8cbf',
+                    level3: '#3a6ca8',
+                    level4: '#1a4c8c'
+                },
+                "📚 读书": {
+                    level1: '#9dc6a7',
+                    level2: '#6da778',
+                    level3: '#4d8f59',
+                    level4: '#2d773a'
+                },
+                "🎬 影视": {
+                    level1: '#d9a78c',
+                    level2: '#bf785a',
+                    level3: '#a8593a',
+                    level4: '#8c3a1a'
+                },
+                "🎮 游戏": {
+                    level1: '#c6a79d',
+                    level2: '#a7786d',
+                    level3: '#8f594d',
+                    level4: '#773a2d'
+                },
+                "💪 健身": {
+                    level1: '#d9a7c6',
+                    level2: '#bf78a7',
+                    level3: '#a8598f',
+                    level4: '#8c3a77'
+                }
+            };
+            
+            const monthsContainer = document.getElementById('months-container');
+            const weeksContainer = document.getElementById('weeks-container');
+            const themeToggle = document.getElementById('theme-toggle');
+            const bgColorPicker = document.getElementById('bg-color-picker');
+            const body = document.body;
+            const statusMessage = document.getElementById('status-message');
+            const currentYearLabel = document.getElementById('current-year');
+            const activitiesColorsContainer = document.getElementById('activities-colors-container');
+            const clearCellBtn = document.getElementById('clear-cell');
+            const legendContainer = document.getElementById('legend-container');
+            const clearDataBtn = document.getElementById('clear-data');
+            const manageActivitiesBtn = document.getElementById('manage-activities');
+            
+            const yearModal = document.getElementById('year-modal');
+            const addActivityModal = document.getElementById('add-activity-modal');
+            const manageActivitiesModal = document.getElementById('manage-activities-modal');
+            const yearInput = document.getElementById('year-input');
+            const activityInput = document.getElementById('activity-input');
+            const yearConfirm = document.getElementById('year-confirm');
+            const yearCancel = document.getElementById('year-cancel');
+            const activityConfirm = document.getElementById('activity-confirm');
+            const activityCancel = document.getElementById('activity-cancel');
+            const activitiesList = document.getElementById('activities-list');
+            const addNewActivityBtn = document.getElementById('add-new-activity');
+            const closeActivitiesModal = document.getElementById('close-activities-modal');
+            
+            function showStatusMessage(message) {
+                statusMessage.textContent = message;
+                statusMessage.style.opacity = 1;
+                setTimeout(() => {
+                    statusMessage.style.opacity = 0;
+                }, 2000);
+            }
+            
+            function showModal(modal) {
+                modal.style.display = 'flex';
+            }
+            
+            function hideModal(modal) {
+                modal.style.display = 'none';
+            }
+            
+            function getActivityColor(activity, level) {
+                if (level === 0) {
+                    return body.classList.contains('light-mode') ? '#e0e0e0' : '#2c2c3a';
+                }
+                
+                if (heatmapDatabase[selectedYear]?.activities?.[activity]?.colors?.[`level${level}`]) {
+                    return heatmapDatabase[selectedYear].activities[activity].colors[`level${level}`];
+                }
+                return defaultColors[activity]?.[`level${level}`] || defaultColors["默认"][`level${level}`];
+            }
+            
+            function initHeatmap(year) {
+                monthsContainer.innerHTML = '';
+                weeksContainer.innerHTML = '';
+                dateMap = {};
+                
+                currentYearLabel.textContent = `${year}年`;
+                
+                const daysInYear = isLeapYear(year) ? 366 : 365;
+                const allDates = [];
+                const startDate = new Date(year, 0, 1);
+                
+                for (let i = 0; i < daysInYear; i++) {
+                    const date = new Date(startDate);
+                    date.setDate(startDate.getDate() + i);
+                    allDates.push(date);
+                }
+                
+                const weeks = [];
+                let currentWeek = [];
+                
+                const firstDayOfYear = startDate.getDay();
+                const offset = firstDayOfYear === 0 ? 6 : firstDayOfYear - 1;
+                
+                for (let i = 0; i < offset; i++) {
+                    currentWeek.push(null);
+                }
+                
+                allDates.forEach(date => {
+                    currentWeek.push(date);
+                    
+                    if (currentWeek.length === 7) {
+                        weeks.push([...currentWeek]);
+                        currentWeek = [];
+                    }
+                });
+                
+                if (currentWeek.length > 0) {
+                    while (currentWeek.length < 7) {
+                        currentWeek.push(null);
+                    }
+                    weeks.push([...currentWeek]);
+                }
+                
+                for (let row = 0; row < 7; row++) {
+                    const weekRow = document.createElement('div');
+                    weekRow.className = 'week-row';
+                    
+                    for (let col = 0; col < weeks.length; col++) {
+                        const cellContainer = document.createElement('div');
+                        const date = weeks[col][row];
+                        
+                        if (date) {
+                            cellContainer.className = 'day-cell-container';
+                            const dateKey = date.toISOString().split('T')[0];
+                            dateMap[`${row}-${col}`] = date;
+                            
+                            const tooltip = document.createElement('div');
+                            tooltip.className = 'tooltip';
+                            tooltip.textContent = `${date.getMonth()+1}月${date.getDate()}日`;
+                            cellContainer.appendChild(tooltip);
+                            
+                            if (date.getDate() === 1) {
+                                cellContainer.classList.add('first-day');
+                            }
+                            
+                            const dateData = heatmapDatabase[year]?.heatmapData?.[dateKey] || [];
+                            
+                            let topPosition = 0;
+                            const activityCount = dateData.length || 1;
+                            const segmentHeight = 100 / activityCount;
+                            
+                            if (dateData.length === 0) {
+                                const defaultCell = document.createElement('div');
+                                defaultCell.className = 'day-cell';
+                                defaultCell.style.height = '100%';
+                                defaultCell.style.backgroundColor = getActivityColor("默认", 0);
+                                
+                                defaultCell.style.borderRadius = '3px';
+                                cellContainer.appendChild(defaultCell);
+                            } else {
+                                dateData.forEach((activityData, index) => {
+                                    const activityCell = document.createElement('div');
+                                    activityCell.className = 'day-cell';
+                                    activityCell.style.height = `${segmentHeight}%`;
+                                    activityCell.style.top = `${topPosition}%`;
+                                    activityCell.style.backgroundColor = getActivityColor(activityData.activity, activityData.level);
+                                    
+                                    if (activityCount === 1) {
+                                        activityCell.style.borderRadius = '3px';
+                                    } else {
+                                        if (index === 0) {
+                                            activityCell.style.borderRadius = '3px 3px 0 0';
+                                        } else if (index === activityCount - 1) {
+                                            activityCell.style.borderRadius = '0 0 3px 3px';
+                                        } else {
+                                            activityCell.style.borderRadius = '0';
+                                        }
+                                    }
+                                    
+                                    cellContainer.appendChild(activityCell);
+                                    topPosition += segmentHeight;
+                                });
+                            }
+                            
+                            cellContainer.addEventListener('click', () => {
+                                const dateKey = date.toISOString().split('T')[0];
+                                
+                                if (clearMode) {
+                                    if (heatmapDatabase[year]?.heatmapData?.[dateKey]) {
+                                        delete heatmapDatabase[year].heatmapData[dateKey];
+                                    }
+                                    
+                                    const existingCells = cellContainer.querySelectorAll('.day-cell');
+                                    existingCells.forEach(cell => cell.remove());
+                                    
+                                    const defaultCell = document.createElement('div');
+                                    defaultCell.className = 'day-cell';
+                                    defaultCell.style.height = '100%';
+                                    defaultCell.style.backgroundColor = getActivityColor("默认", 0);
+                                    defaultCell.style.borderRadius = '3px';
+                                    cellContainer.appendChild(defaultCell);
+                                    
+                                    saveData();
+                                    showStatusMessage('格子数据已清除');
+                                    return;
+                                }
+                                
+                                if (!heatmapDatabase[year]) heatmapDatabase[year] = { heatmapData: {}, activities: {} };
+                                if (!heatmapDatabase[year].heatmapData) heatmapDatabase[year].heatmapData = {};
+                                if (!heatmapDatabase[year].heatmapData[dateKey]) {
+                                    heatmapDatabase[year].heatmapData[dateKey] = [];
+                                }
+                                
+                                let activityIndex = heatmapDatabase[year].heatmapData[dateKey].findIndex(
+                                    item => item.activity === selectedActivity
+                                );
+                                
+                                if (activityIndex === -1) {
+                                    if (selectedLevel > 0) {
+                                        heatmapDatabase[year].heatmapData[dateKey].push({
+                                            activity: selectedActivity,
+                                            level: selectedLevel
+                                        });
+                                    }
+                                } else {
+                                    if (selectedLevel === 0) {
+                                        heatmapDatabase[year].heatmapData[dateKey].splice(activityIndex, 1);
+                                    } else {
+                                        heatmapDatabase[year].heatmapData[dateKey][activityIndex].level = selectedLevel;
+                                    }
+                                }
+                                
+                                const existingCells = cellContainer.querySelectorAll('.day-cell');
+                                existingCells.forEach(cell => cell.remove());
+                                
+                                const dateData = heatmapDatabase[year].heatmapData[dateKey];
+                                let topPos = 0;
+                                const activityCnt = dateData.length || 1;
+                                const segHeight = 100 / activityCnt;
+                                
+                                if (dateData.length > 0) {
+                                    dateData.forEach((actData, idx) => {
+                                        const newCell = document.createElement('div');
+                                        newCell.className = 'day-cell';
+                                        newCell.style.height = `${segHeight}%`;
+                                        newCell.style.top = `${topPos}%`;
+                                        newCell.style.backgroundColor = getActivityColor(actData.activity, actData.level);
+                                        
+                                        if (activityCnt === 1) {
+                                            newCell.style.borderRadius = '3px';
+                                        } else {
+                                            if (idx === 0) {
+                                                newCell.style.borderRadius = '3px 3px 0 0';
+                                            } else if (idx === activityCnt - 1) {
+                                                newCell.style.borderRadius = '0 0 3px 3px';
+                                            } else {
+                                                newCell.style.borderRadius = '0';
+                                            }
+                                        }
+                                        
+                                        cellContainer.appendChild(newCell);
+                                        topPos += segHeight;
+                                    });
+                                } else {
+                                    const defaultCell = document.createElement('div');
+                                    defaultCell.className = 'day-cell';
+                                    defaultCell.style.height = '100%';
+                                    defaultCell.style.backgroundColor = getActivityColor("默认", 0);
+                                    defaultCell.style.borderRadius = '3px';
+                                    cellContainer.appendChild(defaultCell);
+                                }
+                                
+                                saveData();
+                                showStatusMessage('数据已更新');
+                            });
+                        } else {
+                            cellContainer.className = 'day-cell-container empty-cell';
+                            
+                            const isLastCell = col === weeks.length - 1 && row === 6;
+                            
+                            if (isLastCell) {
+                                cellContainer.innerHTML = '<div class="tooltip">切换模式</div>';
+                                cellContainer.addEventListener('click', toggleMode);
+                            }
+                        }
+                        
+                        cellContainer.dataset.row = row;
+                        cellContainer.dataset.col = col;
+                        weekRow.appendChild(cellContainer);
+                    }
+                    
+                    weeksContainer.appendChild(weekRow);
+                }
+                
+                addMonthLabels(weeks);
+            }
+            
+            function addMonthLabels(weeks) {
+                const monthPositions = {};
+                const cellWidth = 15;
+                const cellGap = 3;
+                const cellTotal = cellWidth + cellGap;
+                
+                for (let col = 0; col < weeks.length; col++) {
+                    for (let row = 0; row < 7; row++) {
+                        const date = weeks[col][row];
+                        if (date && date.getDate() === 1) {
+                            const month = date.getMonth();
+                            
+                            if (!monthPositions[month]) {
+                                const leftPosition = 35 + col * cellTotal + cellWidth/2;
+                                
+                                const monthLabel = document.createElement('div');
+                                monthLabel.className = 'month-label';
+                                monthLabel.textContent = (month + 1) + '月';
+                                monthLabel.style.left = `${leftPosition}px`;
+                                monthsContainer.appendChild(monthLabel);
+                                
+                                monthPositions[month] = true;
+                            }
+                        }
+                    }
+                }
+            }
+            
+            function renderLegend() {
+                legendContainer.innerHTML = '';
+                
+                activities.forEach(activity => {
+                    const legendItem = document.createElement('div');
+                    legendItem.className = 'legend-item';
+                    
+                    const colorBox = document.createElement('div');
+                    colorBox.className = 'legend-color';
+                    colorBox.style.backgroundColor = getActivityColor(activity, 1);
+                    
+                    legendItem.appendChild(colorBox);
+                    legendContainer.appendChild(legendItem);
+                });
+            }
+            
+            function isLeapYear(year) {
+                return (year % 4 === 0 && year % 100 !== 0) || (year % 400 === 0);
+            }
+            
+            function renderActivitiesColors() {
+                activitiesColorsContainer.innerHTML = '';
+                
+                activities.forEach(activity => {
+                    const activityGroup = document.createElement('div');
+                    activityGroup.className = 'color-preview-group';
+                    
+                    const header = document.createElement('div');
+                    header.className = 'activity-header';
+                    
+                    const titleContainer = document.createElement('div');
+                    titleContainer.className = 'activity-title';
+                    titleContainer.textContent = activity;
+                    titleContainer.title = activity;
+                    
+                    header.appendChild(titleContainer);
+                    activityGroup.appendChild(header);
+                    
+                    for (let i = 1; i <= 4; i++) {
+                        const colorPreview = document.createElement('div');
+                        colorPreview.className = `color-preview ${selectedActivity === activity && selectedLevel === i ? 'selected' : ''}`;
+                        colorPreview.id = `color-preview-${activity}-${i}`;
+                        colorPreview.title = `等级 ${i} - ${activity}`;
+                        
+                        const color = getActivityColor(activity, i);
+                        colorPreview.style.backgroundColor = color;
+                        
+                        const colorInput = document.createElement('input');
+                        colorInput.type = 'color';
+                        colorInput.value = color;
+                        
+                        colorPreview.addEventListener('click', () => {
+                            selectedActivity = activity;
+                            selectedLevel = i;
+                            
+                            document.querySelectorAll('.color-preview').forEach(el => {
+                                el.classList.remove('selected');
+                            });
+                            colorPreview.classList.add('selected');
+                            
+                            showStatusMessage(`已选择: ${activity} 等级 ${i}`);
+                        });
+                        
+                        colorInput.addEventListener('input', (e) => {
+                            const newColor = e.target.value;
+                            colorPreview.style.backgroundColor = newColor;
+                            
+                            if (!heatmapDatabase[selectedYear]) heatmapDatabase[selectedYear] = { activities: {} };
+                            if (!heatmapDatabase[selectedYear].activities) heatmapDatabase[selectedYear].activities = {};
+                            if (!heatmapDatabase[selectedYear].activities[activity]) {
+                                heatmapDatabase[selectedYear].activities[activity] = { colors: {} };
+                            }
+                            
+                            heatmapDatabase[selectedYear].activities[activity].colors[`level${i}`] = newColor;
+                            
+                            initHeatmap(selectedYear);
+                            renderLegend();
+                            saveData();
+                            showStatusMessage(`颜色已更新: ${activity} 等级 ${i}`);
+                        });
+                        
+                        colorPreview.appendChild(colorInput);
+                        activityGroup.appendChild(colorPreview);
+                    }
+                    
+                    activitiesColorsContainer.appendChild(activityGroup);
+                });
+            }
+            
+            function saveData() {
+                try {
+                    heatmapDatabase.activitiesList = activities;
+                    
+                    heatmapDatabase.global = heatmapDatabase.global || {};
+                    heatmapDatabase.global.theme = body.classList.contains('light-mode') ? 'light' : 'dark';
+                    heatmapDatabase.global.bgColor = body.style.backgroundColor || '';
+                    heatmapDatabase.global.lastSelectedYear = selectedYear;
+                    
+                    localStorage.setItem('heatmapDatabase', JSON.stringify(heatmapDatabase));
+                    return true;
+                } catch (e) {
+                    console.error('保存数据失败:', e);
+                    showStatusMessage('保存失败: ' + e.message);
+                    return false;
+                }
+            }
+            
+            function clearData() {
+                if (confirm('确定要清除当前年份的所有数据吗？')) {
+                    if (heatmapDatabase[selectedYear]) {
+                        heatmapDatabase[selectedYear].heatmapData = {};
+                    }
+                    initHeatmap(selectedYear);
+                    saveData();
+                    showStatusMessage('数据已清除');
+                }
+            }
+            
+            function toggleMode() {
+                if (body.classList.contains('edit-mode')) {
+                    body.classList.remove('edit-mode');
+                    body.classList.add('preview-mode');
+                    showStatusMessage('预览模式');
+                } else {
+                    body.classList.remove('preview-mode');
+                    body.classList.add('edit-mode');
+                    showStatusMessage('编辑模式');
+                }
+            }
+            
+            function toggleTheme() {
+                body.classList.toggle('light-mode');
+                themeToggle.textContent = body.classList.contains('light-mode') ? '🌞' : '🌛';
+                saveData();
+                initHeatmap(selectedYear);
+                renderLegend();
+                showStatusMessage('主题已切换');
+            }
+            
+            function changeBgColor(color) {
+                body.style.backgroundColor = color;
+                saveData();
+                showStatusMessage('背景颜色已更新');
+            }
+            
+            function toggleClearMode() {
+                clearMode = !clearMode;
+                if (clearMode) {
+                    clearCellBtn.style.backgroundColor = '#703a3a';
+                    showStatusMessage('清除模式已启用 - 点击格子清除数据');
+                } else {
+                    clearCellBtn.style.backgroundColor = '';
+                    showStatusMessage('清除模式已关闭');
+                }
+            }
+            
+            clearDataBtn.addEventListener('click', clearData);
+            themeToggle.addEventListener('click', toggleTheme);
+            clearCellBtn.addEventListener('click', toggleClearMode);
+            
+            bgColorPicker.addEventListener('input', (e) => {
+                changeBgColor(e.target.value);
+            });
+            
+            currentYearLabel.addEventListener('click', () => {
+                yearInput.value = selectedYear;
+                showModal(yearModal);
+            });
+            
+            yearConfirm.addEventListener('click', () => {
+                const newYear = parseInt(yearInput.value);
+                if (isNaN(newYear) || newYear < 1970 || newYear > 2100) {
+                    showStatusMessage('请输入有效的年份 (1970-2100)');
+                    return;
+                }
+                
+                selectedYear = newYear;
+                initHeatmap(selectedYear);
+                renderLegend();
+                saveData();
+                showStatusMessage(`已切换到${selectedYear}年`);
+                hideModal(yearModal);
+            });
+            
+            yearCancel.addEventListener('click', () => {
+                hideModal(yearModal);
+            });
+            
+            // 管理事项功能
+            manageActivitiesBtn.addEventListener('click', () => {
+                renderActivitiesList();
+                showModal(manageActivitiesModal);
+            });
+            
+            addNewActivityBtn.addEventListener('click', () => {
+                hideModal(manageActivitiesModal);
+                showModal(addActivityModal);
+            });
+            
+            closeActivitiesModal.addEventListener('click', () => {
+                hideModal(manageActivitiesModal);
+            });
+            
+            function renderActivitiesList() {
+                activitiesList.innerHTML = '';
+                
+                activities.forEach(activity => {
+                    const activityItem = document.createElement('div');
+                    activityItem.className = 'activity-item';
+                    
+                    const activityName = document.createElement('div');
+                    activityName.className = 'activity-name';
+                    activityName.textContent = activity;
+                    
+                    const buttons = document.createElement('div');
+                    buttons.className = 'activity-buttons';
+                    
+                    const renameBtn = document.createElement('button');
+                    renameBtn.className = 'activity-rename-btn';
+                    renameBtn.textContent = '重命名';
+                    
+                    const deleteBtn = document.createElement('button');
+                    deleteBtn.className = 'activity-delete-btn';
+                    deleteBtn.textContent = '删除';
+                    
+                    if (activity === "默认") {
+                        deleteBtn.disabled = true;
+                        deleteBtn.style.opacity = '0.5';
+                    }
+                    
+                    renameBtn.addEventListener('click', () => {
+                        const newName = prompt(`重命名 "${activity}" 为:`, activity);
+                        if (newName && newName.trim() !== '' && newName.trim() !== activity) {
+                            const newNameTrimmed = newName.trim();
+                            
+                            // 检查名称是否已存在
+                            if (activities.includes(newNameTrimmed)) {
+                                showStatusMessage(`活动名称 "${newNameTrimmed}" 已存在`);
+                                return;
+                            }
+                            
+                            const index = activities.indexOf(activity);
+                            if (index !== -1) {
+                                activities[index] = newNameTrimmed;
+                                
+                                if (heatmapDatabase[selectedYear]?.heatmapData) {
+                                    for (const dateKey in heatmapDatabase[selectedYear].heatmapData) {
+                                        heatmapDatabase[selectedYear].heatmapData[dateKey] = 
+                                            heatmapDatabase[selectedYear].heatmapData[dateKey].map(item => {
+                                                if (item.activity === activity) {
+                                                    return { ...item, activity: newNameTrimmed };
+                                                }
+                                                return item;
+                                            });
+                                    }
+                                }
+                                
+                                if (heatmapDatabase[selectedYear]?.activities?.[activity]) {
+                                    heatmapDatabase[selectedYear].activities[newNameTrimmed] = 
+                                        heatmapDatabase[selectedYear].activities[activity];
+                                    delete heatmapDatabase[selectedYear].activities[activity];
+                                }
+                                
+                                if (selectedActivity === activity) {
+                                    selectedActivity = newNameTrimmed;
+                                }
+                                
+                                saveData();
+                                renderActivitiesList();
+                                renderActivitiesColors();
+                                renderLegend();
+                                initHeatmap(selectedYear);
+                                showStatusMessage(`活动名称已更新为 "${newNameTrimmed}"`);
+                            }
+                        }
+                    });
+                    
+                    deleteBtn.addEventListener('click', () => {
+                        if (activity === "默认") return;
+                        
+                        if (confirm(`确定要删除活动类型 "${activity}" 吗？`)) {
+                            activities = activities.filter(a => a !== activity);
+                            
+                            if (heatmapDatabase[selectedYear]?.heatmapData) {
+                                Object.keys(heatmapDatabase[selectedYear].heatmapData).forEach(date => {
+                                    heatmapDatabase[selectedYear].heatmapData[date] = 
+                                        heatmapDatabase[selectedYear].heatmapData[date].filter(
+                                            item => item.activity !== activity
+                                        );
+                                });
+                            }
+                            
+                            if (heatmapDatabase[selectedYear]?.activities) {
+                                delete heatmapDatabase[selectedYear].activities[activity];
+                            }
+                            
+                            if (selectedActivity === activity) {
+                                selectedActivity = "默认";
+                                selectedLevel = 1;
+                            }
+                            
+                            saveData();
+                            renderActivitiesList();
+                            renderActivitiesColors();
+                            renderLegend();
+                            initHeatmap(selectedYear);
+                            showStatusMessage(`活动类型 "${activity}" 已删除`);
+                        }
+                    });
+                    
+                    buttons.appendChild(renameBtn);
+                    buttons.appendChild(deleteBtn);
+                    
+                    activityItem.appendChild(activityName);
+                    activityItem.appendChild(buttons);
+                    
+                    activitiesList.appendChild(activityItem);
+                });
+            }
+            
+            const savedData = localStorage.getItem('heatmapDatabase');
+            if (savedData) {
+                try {
+                    heatmapDatabase = JSON.parse(savedData);
+                    
+                    if (heatmapDatabase.activitiesList) {
+                        activities = heatmapDatabase.activitiesList;
+                    } else {
+                        activities = ["默认"];
+                    }
+                    
+                    if (heatmapDatabase.global) {
+                        if (heatmapDatabase.global.theme === 'light') {
+                            body.classList.add('light-mode');
+                            themeToggle.textContent = '🌞';
+                        } else {
+                            body.classList.remove('light-mode');
+                            themeToggle.textContent = '🌛';
+                        }
+                        
+                        if (heatmapDatabase.global.bgColor) {
+                            body.style.backgroundColor = heatmapDatabase.global.bgColor;
+                            bgColorPicker.value = heatmapDatabase.global.bgColor;
+                        }
+                        
+                        if (heatmapDatabase.global.lastSelectedYear) {
+                            selectedYear = heatmapDatabase.global.lastSelectedYear;
+                        }
+                    }
+
+                    const years = Object.keys(heatmapDatabase)
+                        .filter(k => k !== "global" && k !== "activitiesList")
+                        .map(y => parseInt(y));
+                    
+                    if (years.length > 0) {
+                        if (!years.includes(selectedYear)) {
+                            selectedYear = Math.max(...years);
+                        }
+                    } else {
+                        selectedYear = new Date().getFullYear();
+                        heatmapDatabase[selectedYear] = {
+                            heatmapData: {},
+                            activities: {}
+                        };
+                    }
+                    
+                } catch (e) {
+                    console.error('加载数据失败:', e);
+                    showStatusMessage('加载数据失败');
+                    selectedYear = new Date().getFullYear();
+                    activities = ["默认"];
+                    heatmapDatabase = {
+                        [selectedYear]: {
+                            heatmapData: {},
+                            activities: {}
+                        }
+                    };
+                }
+            } else {
+                selectedYear = new Date().getFullYear();
+                activities = ["默认"];
+                heatmapDatabase = {
+                    [selectedYear]: {
+                        heatmapData: {},
+                        activities: {}
+                    }
+                };
+            }
+            
+            initHeatmap(selectedYear);
+            renderActivitiesColors();
+            renderLegend();
+            
+            const firstColorPreview = document.getElementById('color-preview-默认-1');
+            if (firstColorPreview) {
+                firstColorPreview.classList.add('selected');
+                selectedLevel = 1;
+            }
+            showStatusMessage('数据已加载');
+            
+            body.classList.remove('edit-mode');
+            body.classList.add('preview-mode');
+        });
+    </script>
+</body>
+</html>
